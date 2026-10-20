@@ -1428,6 +1428,11 @@ X(TREG_CE_NET)
 X(TREG_LSR_NET)
 X(NOIOBFF)
 X(IOBFF)
+// IOLOGIC pins of the registers in the IO blocks (GW5A)
+X(OREG_D)
+X(TREG_D)
+X(IREG_Q)
+X(REG_CE)
 
 // DLLDLY
 X(DLLDLY)

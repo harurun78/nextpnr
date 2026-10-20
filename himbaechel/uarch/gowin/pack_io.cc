@@ -546,6 +546,28 @@ void GowinPacker::pack_diff_iobs(void)
 
 static bool is_ff(const Context *ctx, CellInfo *cell) { return is_dff(cell); }
 
+// The registers in the IO blocks of some chips (GW5A) don't use the IOLOGIC
+// pins of the DDR primitives; the chip database then has extra pins for them.
+static IdString iob_reg_pin(const Context *ctx, BelId bel, IdString pin, IdString reg_pin)
+{
+    return ctx->getBelPinWire(bel, reg_pin) != WireId() ? reg_pin : pin;
+}
+
+// With these pins, the LSR of a register without set/reset has to be 0.
+static void tie_iob_reg_lsr(Context *ctx, CellInfo *iologic, BelId bel)
+{
+    if (ctx->getBelPinWire(bel, id_REG_CE) == WireId()) {
+        return;
+    }
+    for (IdString port : {id_SET, id_RESET, id_PRESET, id_CLEAR}) {
+        if (iologic->getPort(port) != nullptr) {
+            return;
+        }
+    }
+    iologic->addInput(id_RESET);
+    iologic->connectPort(id_RESET, ctx->nets.at(ctx->id("$PACKER_GND")).get());
+}
+
 static bool incompatible_ffs(IdString type_a, IdString type_b)
 {
     return type_a != type_b &&
@@ -638,12 +660,19 @@ void GowinPacker::pack_io_regs(void)
             // move ports
             for (auto &port : ff->ports) {
                 IdString port_name = port.first;
-                ff->movePortTo(port_name, iologic_i, port_name != id_Q ? port_name : id_Q4);
+                IdString iol_port = port_name;
+                if (port_name == id_Q) {
+                    iol_port = iob_reg_pin(ctx, l_bel, id_Q4, id_IREG_Q);
+                } else if (port_name == id_CE) {
+                    iol_port = iob_reg_pin(ctx, l_bel, id_CE, id_REG_CE);
+                }
+                ff->movePortTo(port_name, iologic_i, iol_port);
             }
             if (ctx->verbose) {
                 log_info("  place FF %s into IBUF %s, make iologic_i %s\n", ctx->nameOf(ff), ctx->nameOf(&ci),
                          ctx->nameOf(iologic_i));
             }
+            tie_iob_reg_lsr(ctx, iologic_i, l_bel);
             iologic_i->setAttr(id_HAS_REG, 1);
             iologic_i->setAttr(id_IREG_TYPE, ff->type.str(ctx));
             cells_to_remove.push_back(ff->name);
@@ -737,12 +766,19 @@ void GowinPacker::pack_io_regs(void)
                     // move ports
                     for (auto &port : ff->ports) {
                         IdString port_name = port.first;
-                        ff->movePortTo(port_name, iologic_o, port_name != id_D ? port_name : id_D0);
+                        IdString iol_port = port_name;
+                        if (port_name == id_D) {
+                            iol_port = iob_reg_pin(ctx, l_bel, id_D0, id_OREG_D);
+                        } else if (port_name == id_CE) {
+                            iol_port = iob_reg_pin(ctx, l_bel, id_CE, id_REG_CE);
+                        }
+                        ff->movePortTo(port_name, iologic_o, iol_port);
                     }
                     if (ctx->verbose) {
                         log_info("  place FF %s into OBUF %s, make iologic_o %s\n", ctx->nameOf(ff), ctx->nameOf(&ci),
                                  ctx->nameOf(iologic_o));
                     }
+                    tie_iob_reg_lsr(ctx, iologic_o, l_bel);
                     iologic_o->setAttr(id_HAS_REG, 1);
                     iologic_o->setAttr(id_OREG_TYPE, ff->type.str(ctx));
                     cells_to_remove.push_back(ff->name);
@@ -835,7 +871,13 @@ void GowinPacker::pack_io_regs(void)
                         if (port_name == id_Q) {
                             continue;
                         }
-                        ff->movePortTo(port_name, iologic_o, port_name != id_D ? port_name : id_TX);
+                        IdString iol_port = port_name;
+                        if (port_name == id_D) {
+                            iol_port = iob_reg_pin(ctx, l_bel, id_TX, id_TREG_D);
+                        } else if (port_name == id_CE) {
+                            iol_port = iob_reg_pin(ctx, l_bel, id_CE, id_REG_CE);
+                        }
+                        ff->movePortTo(port_name, iologic_o, iol_port);
                     }
 
                     nets_to_remove.push_back(ci.getPort(id_OEN)->name);
@@ -846,6 +888,7 @@ void GowinPacker::pack_io_regs(void)
                         log_info("  place FF %s into IOBUF %s, make iologic_o %s\n", ctx->nameOf(ff), ctx->nameOf(&ci),
                                  ctx->nameOf(iologic_o));
                     }
+                    tie_iob_reg_lsr(ctx, iologic_o, l_bel);
                     iologic_o->setAttr(id_HAS_REG, 1);
                     iologic_o->setAttr(id_TREG_TYPE, ff->type.str(ctx));
                     cells_to_remove.push_back(ff->name);

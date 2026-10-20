@@ -1316,7 +1316,7 @@ def create_io_tiletype(chip: Chip, db: chipdb, x: int, y: int, ttyp: int, tdesc:
                     create_reuse_wire(tt, wire, "TILE_CLK")
                 else:
                     create_reuse_wire(tt, wire, "")
-                if port in {'Q', 'Q0', 'Q1', 'Q2', 'Q3', 'Q4', 'Q5', 'Q6', 'Q7', 'Q8', 'Q9', 'Q10', 'Q11', 'Q12', 'Q13', 'Q14', 'Q15', 'DF', 'LAG', 'LEAD'}:
+                if port in {'Q', 'Q0', 'Q1', 'Q2', 'Q3', 'Q4', 'Q5', 'Q6', 'Q7', 'Q8', 'Q9', 'Q10', 'Q11', 'Q12', 'Q13', 'Q14', 'Q15', 'DF', 'LAG', 'LEAD', 'IREG_Q'}:
                     tt.add_bel_pin(iol, port, wire, PinType.OUTPUT)
                 else:
                     tt.add_bel_pin(iol, port, wire, PinType.INPUT)
