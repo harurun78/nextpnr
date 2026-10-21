@@ -609,22 +609,38 @@ void GowinPacker::pack_iodelay(void)
             nets_to_remove.push_back(di_net->name);
         }
 
-        ci.movePortTo(id_SDTAP, iologic, id_SDTAP);
+        // GW5A: as input delay SDTAP and VALUE are other IOLOGIC pins, and
+        // the static delay (no DYN_DLY_EN or ADAPT_EN) uses neither VALUE
+        // nor the delay value DLYSTEP
+        bool gw5a = ctx->getBelPinWire(l_bel, ctx->id("SDTAP_IN")) != WireId();
+        bool in_pins = is_idelay && gw5a;
+        bool dyn_dly = boolstr_or_default(ci.params, id_DYN_DLY_EN);
+        ci.movePortTo(id_SDTAP, iologic, in_pins ? ctx->id("SDTAP_IN") : id_SDTAP);
         ci.movePortTo(id_SETN, iologic, id_SETN);
-        ci.movePortTo(id_VALUE, iologic, id_VALUE);
+        if (gw5a && !dyn_dly) {
+            ci.disconnectPort(id_VALUE);
+        } else {
+            ci.movePortTo(id_VALUE, iologic, in_pins ? ctx->id("VALUE_IN") : id_VALUE);
+        }
         ci.movePortTo(id_DF, iologic, id_DF);
-
-        // GW5A: DLYSTEP is only used by the dynamic and adaptive delay modes,
-        // in static mode it is not routed.
-        if (boolstr_or_default(ci.params, id_DYN_DLY_EN) || boolstr_or_default(ci.params, id_ADAPT_EN)) {
-            log_error("IODELAY %s: dynamic and adaptive delay are not supported.\n", ctx->nameOf(&ci));
-        }
         for (int i = 0; i < 8; ++i) {
-            ci.disconnectPort(ctx->idf("DLYSTEP[%d]", i));
+            IdString port = ctx->idf("DLYSTEP[%d]", i);
+            if (dyn_dly) {
+                ci.movePortTo(port, iologic, ctx->idf("DLYSTEP%d", i));
+            } else {
+                ci.disconnectPort(port);
+            }
         }
 
-        if (ci.params.count(id_C_STATIC_DLY)) {
-            iologic->setParam(id_C_STATIC_DLY, ci.params.at(id_C_STATIC_DLY));
+        // GW5A: Apicula sets the dynamic delay (DYN_DLY_EN, DLYSTEP), not the
+        // adaptive one.
+        if (boolstr_or_default(ci.params, id_ADAPT_EN)) {
+            log_error("IODELAY %s: adaptive delay is not supported.\n", ctx->nameOf(&ci));
+        }
+        for (IdString param : {id_C_STATIC_DLY, id_DYN_DLY_EN}) {
+            if (ci.params.count(param)) {
+                iologic->setParam(param, ci.params.at(param));
+            }
         }
         iologic->setAttr(id_IODELAY, attr);
         cells_to_remove.push_back(ci.name);
